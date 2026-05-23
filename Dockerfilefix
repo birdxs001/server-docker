@@ -14,6 +14,12 @@ SHELL ["/bin/sh", "-c"]
 CMD ["bash"]
 WORKDIR /stremio
 
+# 将 Debian Buster 源切换到 archive.debian.org（因为 Buster 已 EOL）
+RUN sed -i 's/deb\.debian.org/archive.debian.org/g' /etc/apt/sources.list \
+    && sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list \
+    && sed -i '/security.debian.org/d' /etc/apt/sources.list \
+    && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
 # 安装依赖：wget, gnupg, 以及 VA-API 驱动
 RUN apt update && apt install -y \
     wget \
@@ -25,7 +31,7 @@ RUN apt update && apt install -y \
 
 # 添加 Jellyfin 官方 APT 仓库（自动解决依赖）
 RUN wget -O /usr/share/keyrings/jellyfin.gpg https://repo.jellyfin.org/ubuntu/jellyfin.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$(awk -F'=' '/^ID=/{ print $2 }' /etc/os-release) $(awk -F'=' '/^VERSION_CODENAME=/{ print $2 }' /etc/os-release) main" > /etc/apt/sources.list.d/jellyfin.list \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian buster main" > /etc/apt/sources.list.d/jellyfin.list \
     && apt update \
     && apt install -y jellyfin-ffmpeg \
     && rm -rf /var/lib/apt/lists/*
@@ -35,6 +41,18 @@ RUN ./download_server.sh
 
 COPY . .
 
+VOLUME ["/root/.stremio-server"]
+
+EXPOSE 11470
+EXPOSE 12470
+
+ENV FFMPEG_BIN=/usr/lib/jellyfin-ffmpeg/ffmpeg
+ENV FFPROBE_BIN=/usr/lib/jellyfin-ffmpeg/ffprobe
+ENV APP_PATH=
+ENV NO_CORS=
+ENV CASTING_DISABLED=1
+
+ENTRYPOINT [ "node", "server.js" ]
 VOLUME ["/root/.stremio-server"]
 
 EXPOSE 11470
