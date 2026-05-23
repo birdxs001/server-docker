@@ -1,17 +1,9 @@
 # Copyright (C) 2017-2023 Smart code 203358507
 
-# the node version for running the server
 ARG NODE_VERSION=14
-
-FROM node:$NODE_VERSION
+FROM node:${NODE_VERSION}
 
 ARG VERSION=master
-# Which build to download for the image,
-# possible values are: desktop, android, androidtv, webos and tizen
-# webos and tizen require older versions of node:
-# - Node.js `v0.12.2` for WebOS 3.0 (2016 LG TV)
-# - Node.js `v4.4.3` for Tizen 3.0 (2017 Samsung TV)
-# But, as of writing this, we only support desktop!
 ARG BUILD=desktop
 
 LABEL com.stremio.vendor="Smart Code Ltd."
@@ -19,61 +11,39 @@ LABEL version=${VERSION}
 LABEL description="Stremio's streaming Server"
 
 SHELL ["/bin/sh", "-c"]
-
 CMD ["bash"]
-
 WORKDIR /stremio
 
-# We require version <= 4.4.1
-# https://github.com/jellyfin/jellyfin-ffmpeg/releases/tag/v4.4.1-4
-ARG JELLYFIN_VERSION=4.4.1-4
-
-# Install VA-API drivers for Intel GPU hardware acceleration
-RUN sed -ie 's/deb\.debian/archive.debian/g' /etc/apt/sources.list \
-    && apt -y update \
-    && apt -y install wget \
-    && apt -y install \
-        libva2 \
-        va-driver-all \
-        intel-media-va-driver \
+# 安装依赖：wget, gnupg, 以及 VA-API 驱动
+RUN apt update && apt install -y \
+    wget \
+    gnupg \
+    libva2 \
+    va-driver-all \
+    intel-media-va-driver \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://repo.jellyfin.org/archive/ffmpeg/debian/4.4.1-4/jellyfin-ffmpeg_4.4.1-4-buster_$(dpkg --print-architecture).deb -O jellyfin-ffmpeg_4.4.1-4-buster.deb \
-    && apt -y install ./jellyfin-ffmpeg_4.4.1-4-buster.deb \
-    && rm jellyfin-ffmpeg_4.4.1-4-buster.deb
+# 添加 Jellyfin 官方 APT 仓库（自动解决依赖）
+RUN wget -O /usr/share/keyrings/jellyfin.gpg https://repo.jellyfin.org/ubuntu/jellyfin.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$(awk -F'=' '/^ID=/{ print $2 }' /etc/os-release) $(awk -F'=' '/^VERSION_CODENAME=/{ print $2 }' /etc/os-release) main" > /etc/apt/sources.list.d/jellyfin.list \
+    && apt update \
+    && apt install -y jellyfin-ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY download_server.sh download_server.sh
 RUN ./download_server.sh
 
-# This copy could will override the server.js that was downloaded with the one provided in this folder
-# for custom or manual builds if $VERSION argument is not empty.
 COPY . .
 
 VOLUME ["/root/.stremio-server"]
 
-# HTTP
 EXPOSE 11470
-
-# HTTPS
 EXPOSE 12470
 
-# full path to the ffmpeg binary
-ENV FFMPEG_BIN=
-
-# full path to the ffprobe binary
-ENV FFPROBE_BIN=
-
-# Custom application path for storing server settings, certificates, etc
+ENV FFMPEG_BIN=/usr/lib/jellyfin-ffmpeg/ffmpeg
+ENV FFPROBE_BIN=/usr/lib/jellyfin-ffmpeg/ffprobe
 ENV APP_PATH=
-
-# Use `NO_CORS=1` to disable the server's CORS checks
 ENV NO_CORS=
-
-# "Docker image shouldn't attempt to find network devices or local video players."
-# See: https://github.com/Stremio/server-docker/issues/7
 ENV CASTING_DISABLED=1
-
-# Optional: force disable hardware acceleration detection if still problematic
-# ENV STREMIO_HWACCEL_DISABLE=0
 
 ENTRYPOINT [ "node", "server.js" ]
